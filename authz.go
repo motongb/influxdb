@@ -122,6 +122,7 @@ const (
 	// ViewsResourceType gives permission to one or more views.
 	ViewsResourceType     = ResourceType("views")     // 12
 	DocumentsResourceType = ResourceType("documents") // 13
+	ChecksResourceType    = ResourceType("checks")    // 14
 )
 
 // AllResourceTypes is the list of all known resource types.

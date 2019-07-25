@@ -2,6 +2,11 @@ package influxdb
 
 import "context"
 
+const (
+	CheckDefaultPageSize = 100
+	CheckMaxPageSize     = 500
+)
+
 // Check represents the information required to generate a periodic check task.
 type Check struct {
 	ID                    ID         `json:"id"`
@@ -10,17 +15,36 @@ type Check struct {
 	Tags                  []CheckTag `json:"tags"`
 	StatusMessageTemplate string     `json:"statusMessageTemplate"`
 	Query                 string     `json:"query"`
+
+	// These are necessary for creating/recreating the underlying task.
+	// They should be treated as the source of truth, as they'll effectively overwrite any changes
+	// made directly to the task if the task is regenerated.
+
 	// AuthorizationID ID     `json:"authorizationID"`
-	// Name            string `json:"name"`
-	// Description     string `json:"description,omitempty"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
 	// Status          string `json:"status"`
 	// Every           string `json:"every,omitempty"`
 	// Cron            string `json:"cron,omitempty"`
 	// Offset          string `json:"offset,omitempty"`
-	CreatedAt string `json:"createdAt,omitempty"`
-	UpdatedAt string `json:"updatedAt,omitempty"`
+
+	// Read only. This shouldn't stored on the object, it's decorated on
+	// for populating the API response.
+	Task Task `json:"task,omitempty"`
+
+	CRUDLog
 	// Properties CheckProperties
 }
+
+// ops for checks error
+var (
+	OpFindCheckByID = "FindCheckByID"
+	OpFindCheck     = "FindCheck"
+	OpFindChecks    = "FindChecks"
+	OpCreateCheck   = "CreateCheck"
+	OpUpdateCheck   = "UpdateCheck"
+	OpDeleteCheck   = "DeleteCheck"
+)
 
 // CheckTag is a tag k/v pair used when a check writes to the system bucket.
 type CheckTag struct {
@@ -69,9 +93,8 @@ type CheckUpdate struct {
 	Query                 *string    `json:"flux,omitempty"`
 
 	// For the task
-	Status          *string `json:"status,omitempty"`
-	Description     *string `json:"description,omitempty"`
-	LatestCompleted *string `json:"-"`
+	Status      *string `json:"status,omitempty"`
+	Description *string `json:"description,omitempty"`
 }
 
 // CheckFilter represents a set of filters that restrict the returned results.
@@ -80,9 +103,10 @@ type CheckFilter struct {
 	Name           *string
 	OrganizationID *ID
 	Org            *string
+	Limit          int
 }
 
-// func (c *Check) UnmarshalJSON(data []byte) error {
+// func (c *Check) UnJSON(data []byte) error {
 // 	return nil
 // }
 //

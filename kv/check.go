@@ -19,7 +19,7 @@ func (s *Service) initializeChecks(ctx context.Context, tx Tx) error {
 	if _, err := s.checksBucket(tx); err != nil {
 		return err
 	}
-	if _, err := s.checksIndexCheck(tx); err != nil {
+	if _, err := s.checksIndexBucket(tx); err != nil {
 		return err
 	}
 	return nil
@@ -34,7 +34,7 @@ func (s *Service) checksBucket(tx Tx) (Bucket, error) {
 	return b, nil
 }
 
-func (s *Service) checksIndexCheck(tx Tx) (Bucket, error) {
+func (s *Service) checksIndexBucket(tx Tx) (Bucket, error) {
 	b, err := tx.Bucket(checkIndex)
 	if err != nil {
 		return nil, UnexpectedBucketIndexError(err)
@@ -170,21 +170,9 @@ func filterChecksFn(filter influxdb.CheckFilter) func(b *influxdb.Check) bool {
 		}
 	}
 
-	if filter.Name != nil && filter.OrganizationID != nil {
-		return func(b *influxdb.Check) bool {
-			return b.Name == *filter.Name && b.OrgID == *filter.OrganizationID
-		}
-	}
-
-	if filter.Name != nil {
-		return func(b *influxdb.Check) bool {
-			return b.Name == *filter.Name
-		}
-	}
-
 	if filter.OrganizationID != nil {
 		return func(b *influxdb.Check) bool {
-			return b.OrgID == *filter.OrganizationID
+			return b.OrganizationID == *filter.OrganizationID
 		}
 	}
 
@@ -283,11 +271,11 @@ func (s *Service) CreateCheck(ctx context.Context, b *influxdb.Check) error {
 }
 
 func (s *Service) createCheck(ctx context.Context, tx Tx, b *influxdb.Check) error {
-	if b.OrgID.Valid() {
+	if b.OrganizationID.Valid() {
 		span, ctx := tracing.StartSpanFromContext(ctx)
 		defer span.Finish()
 
-		_, pe := s.findOrganizationByID(ctx, tx, b.OrgID)
+		_, pe := s.findOrganizationByID(ctx, tx, b.OrganizationID)
 		if pe != nil {
 			return &influxdb.Error{
 				Err: pe,
@@ -327,7 +315,7 @@ func (s *Service) createCheckUserResourceMappings(ctx context.Context, tx Tx, b 
 
 	ms, err := s.findUserResourceMappings(ctx, tx, influxdb.UserResourceMappingFilter{
 		ResourceType: influxdb.OrgsResourceType,
-		ResourceID:   b.OrgID,
+		ResourceID:   b.OrganizationID,
 	})
 	if err != nil {
 		return &influxdb.Error{
@@ -373,7 +361,7 @@ func (s *Service) putCheck(ctx context.Context, tx Tx, b *influxdb.Check) error 
 		return pe
 	}
 
-	idx, err := s.checksIndexCheck(tx)
+	idx, err := s.checksIndexBucket(tx)
 	if err != nil {
 		return err
 	}
@@ -384,7 +372,7 @@ func (s *Service) putCheck(ctx context.Context, tx Tx, b *influxdb.Check) error 
 		}
 	}
 
-	bkt, err := s.checksCheck(tx)
+	bkt, err := s.checksBucket(tx)
 	if bkt.Put(encodedID, v); err != nil {
 		return &influxdb.Error{
 			Err: err,
@@ -395,7 +383,7 @@ func (s *Service) putCheck(ctx context.Context, tx Tx, b *influxdb.Check) error 
 
 // checkIndexKey is a combination of the orgID and the check name.
 func checkIndexKey(b *influxdb.Check) ([]byte, error) {
-	orgID, err := b.OrgID.Encode()
+	orgID, err := b.OrganizationID.Encode()
 	if err != nil {
 		return nil, &influxdb.Error{
 			Code: influxdb.EInvalid,
@@ -413,7 +401,7 @@ func (s *Service) forEachCheck(ctx context.Context, tx Tx, descending bool, fn f
 	span, _ := tracing.StartSpanFromContext(ctx)
 	defer span.Finish()
 
-	bkt, err := s.checksCheck(tx)
+	bkt, err := s.checksBucket(tx)
 	if err != nil {
 		return err
 	}
@@ -476,36 +464,37 @@ func (s *Service) updateCheck(ctx context.Context, tx Tx, id influxdb.ID, upd in
 		return nil, err
 	}
 
-	if upd.RetentionPeriod != nil {
-		b.RetentionPeriod = *upd.RetentionPeriod
-	}
+	// if upd.RetentionPeriod != nil {
+	// 	b.RetentionPeriod = *upd.RetentionPeriod
+	// }
 
-	if upd.Description != nil {
-		b.Description = *upd.Description
-	}
+	// TODO(jm): fix this
+	// if upd.Description != nil {
+	// 	b.Description = *upd.Description
+	// }
 
-	if upd.Name != nil {
-		b0, err := s.findCheckByName(ctx, tx, b.OrgID, *upd.Name)
-		if err == nil && b0.ID != id {
-			return nil, &influxdb.Error{
-				Code: influxdb.EConflict,
-				Msg:  "check name is not unique",
-			}
-		}
-		key, err := checkIndexKey(b)
-		if err != nil {
-			return nil, err
-		}
-		idx, err := s.checksIndexCheck(tx)
-		if err != nil {
-			return nil, err
-		}
-		// Checks are indexed by name and so the check index must be pruned when name is modified.
-		if err := idx.Delete(key); err != nil {
-			return nil, err
-		}
-		b.Name = *upd.Name
-	}
+	// if upd.Name != nil {
+	// 	b0, err := s.findCheckByName(ctx, tx, b.OrganizationID, *upd.Name)
+	// 	if err == nil && b0.ID != id {
+	// 		return nil, &influxdb.Error{
+	// 			Code: influxdb.EConflict,
+	// 			Msg:  "check name is not unique",
+	// 		}
+	// 	}
+	// 	key, err := checkIndexKey(b)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	idx, err := s.checksIndexBucket(tx)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	// Checks are indexed by name and so the check index must be pruned when name is modified.
+	// 	if err := idx.Delete(key); err != nil {
+	// 		return nil, err
+	// 	}
+	// 	b.Name = *upd.Name
+	// }
 
 	b.UpdatedAt = s.Now()
 
