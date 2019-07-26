@@ -3,6 +3,8 @@ package influxdb
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
 )
 
 // Updator is general interface to embed
@@ -88,3 +90,19 @@ type NotificationRuleStore interface {
 	// DeleteNotificationRule removes a notification rule by ID.
 	DeleteNotificationRule(ctx context.Context, id ID) error
 }
+
+// NotificationEndpoint is the configuration describing
+// how to call a 3rd party service. E.g. Slack, Pagerduty
+type NotificationEndpoint interface {
+	Valid() error
+	Type() string
+	json.Marshaler
+	Updator
+	Getter
+	// ParseResponse will parse the response of
+	// the http request.
+	ParseResponse(resp *http.Response) error
+}
+
+// Notification is final message to be sent.
+type Notification io.Reader
