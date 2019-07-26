@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	http "net/http"
 	"strconv"
@@ -57,6 +58,15 @@ func NewCheckHandler(b *CheckBackend) *CheckHandler {
 	h.HandlerFunc("DELETE", checksIDPath, h.handleDeleteCheck)
 
 	return h
+}
+
+// check is used internally for serialization/deserialization.
+type check struct {
+}
+
+// toInfluxDB converts a check to its public HTTP response
+func (c *check) toInfluxDB() (*influxdb.Check, error) {
+	return &influxdb.Check{}, nil
 }
 
 // handleGetChecks is the HTTP handler for the GET /api/v2/checks route.
@@ -119,20 +129,222 @@ func decodeGetChecksRequest(ctx context.Context, r *http.Request) (*getChecksReq
 
 // handleCreateCheck is the HTTP handler for the POST /api/v2/checks route.
 func (h *CheckHandler) handleCreateCheck(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 
+	h.logger.Debug("create check request", zap.String("r", fmt.Sprint(r)))
+	req, err := decodePostCheckRequest(ctx, r)
+	if err != nil {
+		h.HandleHTTPError(ctx, err, w)
+		return
+	}
+
+	if err := h.CheckService.CreateCheck(ctx, req.Check); err != nil {
+		h.HandleHTTPError(ctx, err, w)
+		return
+	}
+	h.logger.Debug("check created", zap.String("check", fmt.Sprint(req.Check)))
+
+	if err := encodeResponse(ctx, w, http.StatusCreated, newCheckResponse(req.Check, []*influxdb.Label{})); err != nil {
+		logEncodingError(h.logger, r, err)
+		return
+	}
+}
+
+type postCheckRequest struct {
+	Check *influxdb.Check
+}
+
+func (b postCheckRequest) Validate() error {
+	if !b.Check.OrganizationID.Valid() {
+		return fmt.Errorf("check requires an organization")
+	}
+	return nil
+}
+
+func decodePostCheckRequest(ctx context.Context, r *http.Request) (*postCheckRequest, error) {
+	c := &check{}
+	if err := json.NewDecoder(r.Body).Decode(c); err != nil {
+		return nil, err
+	}
+
+	ic, err := c.toInfluxDB()
+	if err != nil {
+		return nil, err
+	}
+
+	req := &postCheckRequest{
+		Check: ic,
+	}
+
+	return req, req.Validate()
 }
 
 // handleGetCheck is the HTTP handler for the GET /api/v2/checks/:id route.
 func (h *CheckHandler) handleGetCheck(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 
+	h.logger.Debug("retrieve check request", zap.String("r", fmt.Sprint(r)))
+
+	req, err := decodeGetCheckRequest(ctx, r)
+	if err != nil {
+		h.HandleHTTPError(ctx, err, w)
+		return
+	}
+
+	b, err := h.CheckService.FindCheckByID(ctx, req.CheckID)
+	if err != nil {
+		h.HandleHTTPError(ctx, err, w)
+		return
+	}
+
+	labels, err := h.LabelService.FindResourceLabels(ctx, influxdb.LabelMappingFilter{ResourceID: b.ID})
+	if err != nil {
+		h.HandleHTTPError(ctx, err, w)
+		return
+	}
+
+	h.logger.Debug("check retrieved", zap.String("check", fmt.Sprint(b)))
+
+	if err := encodeResponse(ctx, w, http.StatusOK, newCheckResponse(b, labels)); err != nil {
+		logEncodingError(h.logger, r, err)
+		return
+	}
+}
+
+type getCheckRequest struct {
+	CheckID influxdb.ID
+}
+
+func decodeGetCheckRequest(ctx context.Context, r *http.Request) (*getCheckRequest, error) {
+	params := httprouter.ParamsFromContext(ctx)
+	id := params.ByName("id")
+	if id == "" {
+		return nil, &influxdb.Error{
+			Code: influxdb.EInvalid,
+			Msg:  "url missing id",
+		}
+	}
+
+	var i influxdb.ID
+	if err := i.DecodeFromString(id); err != nil {
+		return nil, err
+	}
+	req := &getCheckRequest{
+		CheckID: i,
+	}
+
+	return req, nil
 }
 
 // handleUpdateCheck is the HTTP handler for the PATCH /api/v2/checks/:id route.
 func (h *CheckHandler) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	h.logger.Debug("update check request", zap.String("r", fmt.Sprint(r)))
 
+	req, err := decodePatchCheckRequest(ctx, r)
+	if err != nil {
+		h.HandleHTTPError(ctx, err, w)
+		return
+	}
+
+	b, err := h.CheckService.UpdateCheck(ctx, req.CheckID, req.Update)
+	if err != nil {
+		h.HandleHTTPError(ctx, err, w)
+		return
+	}
+
+	labels, err := h.LabelService.FindResourceLabels(ctx, influxdb.LabelMappingFilter{ResourceID: b.ID})
+	if err != nil {
+		h.HandleHTTPError(ctx, err, w)
+		return
+	}
+	h.logger.Debug("check updated", zap.String("check", fmt.Sprint(b)))
+
+	if err := encodeResponse(ctx, w, http.StatusOK, newCheckResponse(b, labels)); err != nil {
+		logEncodingError(h.logger, r, err)
+		return
+	}
+}
+
+type patchCheckRequest struct {
+	Update  influxdb.CheckUpdate
+	CheckID influxdb.ID
+}
+
+func decodePatchCheckRequest(ctx context.Context, r *http.Request) (*patchCheckRequest, error) {
+	params := httprouter.ParamsFromContext(ctx)
+	id := params.ByName("id")
+	if id == "" {
+		return nil, &influxdb.Error{
+			Code: influxdb.EInvalid,
+			Msg:  "url missing id",
+		}
+	}
+
+	var i influxdb.ID
+	if err := i.DecodeFromString(id); err != nil {
+		return nil, &influxdb.Error{
+			Code: influxdb.EInvalid,
+			Msg:  err.Error(),
+		}
+	}
+
+	cu := &influxdb.CheckUpdate{}
+	if err := json.NewDecoder(r.Body).Decode(cu); err != nil {
+		return nil, &influxdb.Error{
+			Code: influxdb.EInvalid,
+			Msg:  err.Error(),
+		}
+	}
+
+	return &patchCheckRequest{
+		Update:  *cu,
+		CheckID: i,
+	}, nil
 }
 
 // handleDeleteCheck is the HTTP handler for the DELETE /api/v2/checks/:id route.
 func (h *CheckHandler) handleDeleteCheck(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	h.logger.Debug("delete check request", zap.String("r", fmt.Sprint(r)))
 
+	req, err := decodeDeleteCheckRequest(ctx, r)
+	if err != nil {
+		h.HandleHTTPError(ctx, err, w)
+		return
+	}
+
+	if err := h.CheckService.DeleteCheck(ctx, req.CheckID); err != nil {
+		h.HandleHTTPError(ctx, err, w)
+		return
+	}
+
+	h.logger.Debug("check deleted", zap.String("checkID", req.CheckID.String()))
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type deleteCheckRequest struct {
+	CheckID influxdb.ID
+}
+
+func decodeDeleteCheckRequest(ctx context.Context, r *http.Request) (*deleteCheckRequest, error) {
+	params := httprouter.ParamsFromContext(ctx)
+	id := params.ByName("id")
+	if id == "" {
+		return nil, &influxdb.Error{
+			Code: influxdb.EInvalid,
+			Msg:  "url missing id",
+		}
+	}
+
+	var i influxdb.ID
+	if err := i.DecodeFromString(id); err != nil {
+		return nil, err
+	}
+	req := &deleteCheckRequest{
+		CheckID: i,
+	}
+
+	return req, nil
 }
