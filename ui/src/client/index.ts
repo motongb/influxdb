@@ -885,13 +885,10 @@ export type CheckStatusLevel = 'UNKNOWN' | 'OK' | 'INFO' | 'CRIT' | 'WARN'
 
 export type ThresholdCheck = CheckBase & {
   type?: 'threshold'
-  thresholds?: ThresholdCheckThreshold[]
+  thresholds?: Threshold[]
 }
 
-export type ThresholdCheckThreshold =
-  | GreaterThreshold
-  | LesserThreshold
-  | RangeThreshold
+export type Threshold = GreaterThreshold | LesserThreshold | RangeThreshold
 
 export type GreaterThreshold = ThresholdBase & {
   type: 'greater'
@@ -1391,13 +1388,13 @@ export type NotificationRule =
 
 export type SlackNotificationRule = NotificationRuleBase & {
   type: 'slack'
-  channel: string
+  channel?: string
   messageTemplate: string
 }
 
 export interface NotificationRuleBase {
   readonly id: string
-  readonly notifyEndpointID: string
+  readonly notifyEndpointID?: string
   orgID?: string
   readonly authorizationID?: string
   readonly createdAt?: string
@@ -1406,13 +1403,13 @@ export interface NotificationRuleBase {
   name: string
   sleepUntil?: string
   every?: string
-  offset: string
+  offset?: string
   cron?: string
   runbookLink?: string
-  limitEvery: number
-  limit: number
+  limitEvery?: number
+  limit?: number
   tagRules: TagRule[]
-  description: string
+  description?: string
   statusRules: StatusRule[]
   labels?: Labels
 }
@@ -1445,6 +1442,12 @@ export type SMTPNotificationRule = NotificationRuleBase & {
 export type PagerDutyNotificationRule = NotificationRuleBase & {
   type: 'pagerduty'
   messageTemplate: string
+}
+
+export interface NotificationRuleUpdate {
+  name?: string
+  description?: string
+  status?: 'active' | 'inactive'
 }
 
 export interface NotificationEndpoints {
@@ -5217,6 +5220,7 @@ export interface PostQueryParams {
 
   headers?: {
     'Zap-Trace-Span'?: string
+    'Accept-Encoding'?: string
     'Content-Type'?: string
   }
 }
@@ -7868,6 +7872,53 @@ export const putNotificationRule = (
     options
   ) as Promise<PutNotificationRuleResult>
 
+export interface PatchNotificationRuleParams {
+  ruleID: string
+
+  data: NotificationRuleUpdate
+
+  headers?: {
+    'Zap-Trace-Span'?: string
+  }
+}
+
+type PatchNotificationRuleResult =
+  | PatchNotificationRuleOKResult
+  | PatchNotificationRuleNotFoundResult
+  | PatchNotificationRuleDefaultResult
+
+interface PatchNotificationRuleOKResult {
+  status: 200
+  headers: Headers
+  data: NotificationRule
+}
+
+interface PatchNotificationRuleNotFoundResult {
+  status: 404
+  headers: Headers
+  data: Error
+}
+
+interface PatchNotificationRuleDefaultResult {
+  status: 500
+  headers: Headers
+  data: Error
+}
+
+export const patchNotificationRule = (
+  params: PatchNotificationRuleParams,
+  options: RequestOptions = {}
+): Promise<PatchNotificationRuleResult> =>
+  request(
+    'PATCH',
+    `/api/v2/notificationRules/${params.ruleID}`,
+    {
+      ...params,
+      headers: {...params.headers, 'Content-Type': 'application/json'},
+    },
+    options
+  ) as Promise<PatchNotificationRuleResult>
+
 export interface DeleteNotificationRuleParams {
   ruleID: string
 
@@ -8096,4 +8147,3 @@ export const deleteNotificationEndpoint = (
     params,
     options
   ) as Promise<DeleteNotificationEndpointResult>
-

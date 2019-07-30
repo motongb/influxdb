@@ -11,11 +11,11 @@ import GreaterThresholdMarker from 'src/shared/components/GreaterThresholdMarker
 import {clamp} from 'src/shared/utils/vis'
 
 // Types
-import {ThresholdCheckThreshold} from 'src/types'
+import {Threshold} from 'src/types'
 
 interface Props {
-  thresholds: ThresholdCheckThreshold[]
-  onSetThresholds: (newThresholds: ThresholdCheckThreshold[]) => void
+  thresholds: Threshold[]
+  onSetThresholds: (newThresholds: Threshold[]) => void
   yScale: Scale<number, number>
   yDomain: number[]
 }
@@ -31,7 +31,7 @@ const ThresholdMarkers: FunctionComponent<Props> = ({
   const handleDrag = (index: number, field: string, y: number) => {
     const yRelative = y - originRef.current.getBoundingClientRect().top
     const yValue = clamp(yScale.invert(yRelative), yDomain)
-    const nextThreshold: ThresholdCheckThreshold = {
+    const nextThreshold: Threshold = {
       ...thresholds[index],
       [field]: yValue,
     }

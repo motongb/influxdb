@@ -21,13 +21,13 @@ import {
   RemoteDataState,
   CheckViewProperties,
   TimeZone,
-  ThresholdCheckThreshold,
+  Threshold,
 } from 'src/types'
 
 const X_COLUMN = '_time'
 const Y_COLUMN = '_value'
 
-const THRESHOLDS: ThresholdCheckThreshold[] = [
+const THRESHOLDS: Threshold[] = [
   {
     type: 'greater',
     allValues: false,

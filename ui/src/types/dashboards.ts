@@ -109,5 +109,5 @@ export {
   AxisScale,
   XYGeom,
   CreateDashboardRequest,
-  ThresholdCheckThreshold,
+  Threshold,
 } from 'src/client'

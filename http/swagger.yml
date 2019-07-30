@@ -8908,8 +8908,8 @@ components:
             thresholds:
               type: array
               items:
-                $ref: "#/components/schemas/ThresholdCheckThreshold"
-    ThresholdCheckThreshold:
+                $ref: "#/components/schemas/Threshold"
+    Threshold:
       oneOf:
         - $ref: "#/components/schemas/GreaterThreshold"
         - $ref: "#/components/schemas/LesserThreshold"
@@ -9011,15 +9011,10 @@ components:
       type: object
       required:
         - id
-        - notifyEndpointID
         - orgid
         - status
         - name
-        - offset
-        - limitEvery
-        - limit
         - tagRules
-        - description
         - statusRules
       properties:
         id:
@@ -9116,7 +9111,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/NotificationRuleBase"
         - type: object
-          required: [type, channel, messageTemplate]
+          required: [type, messageTemplate]
           properties:
             type:
               type: string
