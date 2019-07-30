@@ -9124,7 +9124,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/NotificationRuleBase"
         - type: object
-          required: [type, subjectTemplate, bodyTemplate, to]
+          required: [type, subjectTemplate, to]
           properties:
             type:
               type: string
